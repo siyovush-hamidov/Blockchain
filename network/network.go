@@ -104,7 +104,7 @@ func serve(listener net.Listener, handle func(Conn, *Package)) {
 	for{
 		conn, err := listener.Accept()
 		if err != nil{
-			return nil
+			return
 		}
 		go handleConn(conn, handle)
 	}
