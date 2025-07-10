@@ -23,6 +23,9 @@ const(
 	BUFFSIZE = 4 << 10 // 2^10*4 = 4KiB
 )
 
+type Listener net.Listener
+type Conn net.Conn
+
 func Send(address string, pack *Package) *Package {
 	conn, err := net.Dial("tcp", address)
 	if err != nil {
@@ -81,4 +84,49 @@ func DeserializePackage(data string) *Package{
 		return nil
 	}
 	return &pack
+}
+
+func Listen(address string, handle func(Conn, *Package)) Listener {
+	splited := strings.Split(address, ":")
+	if len(splited) != 2 {
+		return nil
+	}
+	listener, err := net.Listen("tcp", "0.0.0.0:"+splited[1])
+	if err != nil{
+		return nil
+	}
+	go serve(listener, handle)
+	return Listener(listener)
+}
+
+func serve(listener net.Listener, handle func(Conn, *Package)) {
+	defer listener.Close()
+	for{
+		conn, err := listener.Accept()
+		if err != nil{
+			return nil
+		}
+		go handleConn(conn, handle)
+	}
+}
+
+func handleConn(conn net.Conn, handle func(Conn, *Package)) {
+	defer conn.Close()
+	pack := readPackage(conn)
+	if pack == nil {
+		return
+	}
+	handle(Conn(conn), pack)
+}
+
+func Handle(option int, conn Conn, pack *Package, handle func(*Package) string) bool {
+	if pack.Option != option {
+		return false
+	}
+
+	conn.Write([]byte(SerializePackage(&Package{
+		Option: option,
+		Data: handle(pack),
+	}) + ENDBYTES))
+	return true
 }
