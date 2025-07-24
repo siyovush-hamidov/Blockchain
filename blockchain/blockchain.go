@@ -318,3 +318,4 @@ func DeserializeBlock(data string) *Block {
 	}
 	return &block
 }
+
