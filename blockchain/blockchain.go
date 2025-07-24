@@ -19,6 +19,8 @@ import (
 	"os"
 	"sort"
 	"time"
+
+	_ "github.com/mattn/go-sqlite3"
 )
 
 const (
@@ -57,7 +59,18 @@ const (
 )
 
 const (
-	KEY_SIZE = 512
+	KEY_SIZE = 2048
+	// bits int: This integer represents the desired bit size of the RSA key. Common values include 2048 or 4096 for strong security. The function returns an error if a key of less than 1024 bits is requested, as such keys are considered insecure.
+	// Изза этого была ошибка:
+	// 	// siyovush@siyovush-laptop:~/Desktop/Work/Studying/golang/Blockchain$ ./main 
+	// panic: Failed to generate private key
+
+	// goroutine 1 [running]:
+	// github.com/siyovush-hamidov/Blockchain/blockchain.NewUser()
+	//         /home/siyovush/Desktop/Work/Studying/golang/Blockchain/blockchain/blockchain.go:579 +0x89
+	// main.main()
+	//         /home/siyovush/Desktop/Work/Studying/golang/Blockchain/main.go:15 +0x25
+	// Q: Почему нельзя использовать 512 в качестве количества бит в rsa.GenerateKey() ?
 )
 
 type BlockChain struct {
@@ -135,7 +148,6 @@ func NewChain(filename, receiver string) error {
 	if err != nil {
 		return err
 	}
-
 	file.Close()
 	db, err := sql.Open("sqlite3", filename)
 	if err != nil {
@@ -197,17 +209,21 @@ func (user *User) Private() *rsa.PrivateKey {
 }
 
 func (tx *Transaction) hash() []byte {
-	return HashSum(bytes.Join(
-		[][]byte{
-			tx.RandBytes,
-			tx.PrevBlock,
-			[]byte(tx.Sender),
-			[]byte(tx.Receiver),
-			ToBytes(tx.Value),
-			ToBytes(tx.ToStorage),
-		},
-		[]byte{},
-	))
+    hash := HashSum(bytes.Join(
+        [][]byte{
+            tx.RandBytes,
+            tx.PrevBlock,
+            []byte(tx.Sender),
+            []byte(tx.Receiver),
+            ToBytes(tx.Value),
+            ToBytes(tx.ToStorage),
+        },
+        []byte{},
+    ))
+    if hash == nil {
+        fmt.Println("Ошибка: хеш транзакции равен nil")
+    }
+    return hash
 }
 
 func (tx *Transaction) sign(priv *rsa.PrivateKey) []byte{
@@ -262,6 +278,7 @@ func (block *Block) AddTransaction(chain *BlockChain, tx *Transaction) error {
 		return errors.New("Storage reward pass")
 	}
 	if !bytes.Equal(tx.PrevBlock, chain.LastHash()) {
+		fmt.Println("Ошибка: PrevBlock не совпадает с LastHash")
 		return errors.New("Previous block in the transaction is not the last hash in chain")
 	}
 	var balanceInChain uint64
@@ -273,6 +290,7 @@ func (block *Block) AddTransaction(chain *BlockChain, tx *Transaction) error {
 		balanceInChain = chain.Balance(tx.Sender, chain.Size())
 	}
 	if balanceInTX > balanceInChain {
+		fmt.Println("Ошибка: недостаточно средств у отправителя", tx.Sender, "баланс:", balanceInChain, "требуется:", balanceInTX)
 		return errors.New("Insufficient funds")
 	}
 	block.Mapping[tx.Sender] = balanceInChain - balanceInTX
@@ -353,54 +371,60 @@ func (block *Block) Accept(chain *BlockChain, user *User, ch chan bool) error {
 
 	return nil
 }
-
 func (block *Block) transactionIsValid(chain *BlockChain, size uint64) bool {
-	lentxs := len(block.Transactions)
-	plusStorage := 0
-	for i := 0; i < lentxs; i++ {
-		if block.Transactions[i].Sender == STORAGE_CHAIN {
-			plusStorage = 1
-			break
-		}
-	}
-	if lentxs == 0 || lentxs > TXS_LIMIT + plusStorage {
-		return false
-	}
+    lentxs := len(block.Transactions)
+    plusStorage := 0
+    for i := 0; i < lentxs; i++ {
+        if block.Transactions[i].Sender == STORAGE_CHAIN {
+            plusStorage = 1
+            break
+        }
+    }
+    if lentxs == 0 || lentxs > TXS_LIMIT+plusStorage {
+        fmt.Println("Ошибка: неверное количество транзакций:", lentxs)
+        return false
+    }
 
-	for i := 0; i < lentxs; i++ {
-		for j := 0; j < lentxs; j++ {
-			if bytes.Equal(block.Transactions[i].RandBytes, block.Transactions[j].RandBytes) {
-				return false
-			}
-			if block.Transactions[i].Sender == STORAGE_CHAIN && 
-			block.Transactions[j].Sender == STORAGE_CHAIN {
-				return false
-			}
-		}
-	}
+    for i := 0; i < lentxs - 1; i++ {
+        for j := i + 1; j < lentxs; j++ {
+            if bytes.Equal(block.Transactions[i].RandBytes, block.Transactions[j].RandBytes) && i != j {
+                fmt.Println("Ошибка: дублирующиеся RandBytes в транзакциях")
+                return false
+            }
+            if block.Transactions[i].Sender == STORAGE_CHAIN && block.Transactions[j].Sender == STORAGE_CHAIN && i != j {
+                fmt.Println("Ошибка: несколько транзакций от STORAGE_CHAIN")
+                return false
+            }
+        }
+    }
 
-	for i := 0; i < lentxs; i++ {
-		tx := block.Transactions[i]
-		if tx.Sender == STORAGE_CHAIN {
-			if tx.Receiver != block.Miner || tx.Value != STORAGE_REWARD {
-				return false
-			}
-		} else {
-			if !tx.hashIsValid() {
-				return false
-			}
-			if !tx.signIsValid() {
-				return false
-			}
-		}
-		if !block.balanceIsValid(chain, tx.Sender, size){
-			return false
-		}
-		if !block.balanceIsValid(chain, tx.Receiver, size){
-			return false
-		}
-	}
-	return true
+    for i := 0; i < lentxs; i++ {
+        tx := block.Transactions[i]
+        if tx.Sender == STORAGE_CHAIN {
+            if tx.Receiver != block.Miner || tx.Value != STORAGE_REWARD {
+                fmt.Println("Ошибка: транзакция от STORAGE_CHAIN не для майнера или неверная награда")
+                return false
+            }
+        } else {
+            if !tx.hashIsValid() {
+                fmt.Println("Ошибка: неверный хеш транзакции", i)
+                return false
+            }
+            if !tx.signIsValid() {
+                fmt.Println("Ошибка: неверная подпись транзакции", i)
+                return false
+            }
+        }
+        if !block.balanceIsValid(chain, tx.Sender, size) {
+            fmt.Println("Ошибка: неверный баланс отправителя для транзакции", i)
+            return false
+        }
+        if !block.balanceIsValid(chain, tx.Receiver, size) {
+            fmt.Println("Ошибка: неверный баланс получателя для транзакции", i)
+            return false
+        }
+    }
+    return true
 }
 
 func (block *Block) hash() []byte {
@@ -528,7 +552,7 @@ func ProofOfWork(blockHash []byte, difficulty uint8, ch chan bool) uint64 {
 }
 
 func Verify(pub *rsa.PublicKey, data, sign []byte) error {
-	// Q: почему data в строке выше без типа?
+	// Q: почему data /* в */ строке выше без типа?
 	return rsa.VerifyPSS(pub, crypto.SHA256, data, sign, nil)
 }
 
@@ -574,8 +598,12 @@ func ParsePrivate(privData string) *rsa.PrivateKey {
 }
 
 func NewUser() *User {
+	priv := GeneratePrivate(KEY_SIZE)
+    if priv == nil {
+        panic("Failed to generate private key")
+    }
 	return &User{
-		PrivateKey: GeneratePrivate(KEY_SIZE),
+		PrivateKey: priv,
 	}
 	// Q: Это означает: User такой, что имеет такие характеристики. Да или нет?
 }
