@@ -12,7 +12,12 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"math"
+	"math/big"
+	mrand "math/rand"
 	"os"
+	"sort"
 	"time"
 )
 
@@ -45,6 +50,14 @@ const (
 
 const (
 	TXS_LIMIT = 2
+)
+
+const (
+	DEBUG = true
+)
+
+const (
+	KEY_SIZE = 512
 )
 
 type BlockChain struct {
@@ -81,7 +94,7 @@ type User struct {
 func (chain *BlockChain) AddBlock(block *Block) {
 	chain.DB.Exec("INSERT INTO BlockChain (Hash, Block) VALUES ($1, $2)",
 		Base64Encode(block.CurrHash),
-		SerializeBlock(Block),
+		SerializeBlock(block),
 	)
 }
 
@@ -131,7 +144,7 @@ func NewChain(filename, receiver string) error {
 
 	defer db.Close()
 
-	_, err := db.Exec(CREATE_TABLE)
+	_, err = db.Exec(CREATE_TABLE)
 	chain := &BlockChain {
 		DB: db,
 	}
@@ -150,13 +163,13 @@ func NewChain(filename, receiver string) error {
 	return nil
 }
 
-func NewTransaction(user *User, lashHash []byte, to string, value *uint64) *Transaction{
+func NewTransaction(user *User, lasthash []byte, to string, value uint64) *Transaction{
 	tx := &Transaction{
 		RandBytes: GenerateRandomBytes(RAND_BYTES),
-		PrevBlock: lastHash,
+		PrevBlock: lasthash,
 		Sender: user.Address(),
 		Receiver: to,
-		Value: *value,
+		Value: value,
 	}
 	if value > START_PERCENT {
 		tx.ToStorage = STORAGE_REWARD
@@ -319,3 +332,390 @@ func DeserializeBlock(data string) *Block {
 	return &block
 }
 
+func (block *Block) Accept(chain *BlockChain, user *User, ch chan bool) error {
+	// Q: chan bool?
+	if !block.transactionIsValid(chain, chain.Size()) {
+		return errors.New("The transaction is not valid")
+	}
+
+	block.AddTransaction(chain, &Transaction{
+		RandBytes: GenerateRandomBytes(RAND_BYTES),
+		PrevBlock: chain.LastHash(),
+		Sender: STORAGE_CHAIN,
+		Receiver: user.Address(),
+		Value: STORAGE_REWARD,
+	})
+
+	block.TimeStamp = time.Now().Format(time.RFC3339)
+	block.CurrHash = block.hash()
+	block.Signature = block.sign(user.Private())
+	block.Nonce = block.proof(ch)
+
+	return nil
+}
+
+func (block *Block) transactionIsValid(chain *BlockChain, size uint64) bool {
+	lentxs := len(block.Transactions)
+	plusStorage := 0
+	for i := 0; i < lentxs; i++ {
+		if block.Transactions[i].Sender == STORAGE_CHAIN {
+			plusStorage = 1
+			break
+		}
+	}
+	if lentxs == 0 || lentxs > TXS_LIMIT + plusStorage {
+		return false
+	}
+
+	for i := 0; i < lentxs; i++ {
+		for j := 0; j < lentxs; j++ {
+			if bytes.Equal(block.Transactions[i].RandBytes, block.Transactions[j].RandBytes) {
+				return false
+			}
+			if block.Transactions[i].Sender == STORAGE_CHAIN && 
+			block.Transactions[j].Sender == STORAGE_CHAIN {
+				return false
+			}
+		}
+	}
+
+	for i := 0; i < lentxs; i++ {
+		tx := block.Transactions[i]
+		if tx.Sender == STORAGE_CHAIN {
+			if tx.Receiver != block.Miner || tx.Value != STORAGE_REWARD {
+				return false
+			}
+		} else {
+			if !tx.hashIsValid() {
+				return false
+			}
+			if !tx.signIsValid() {
+				return false
+			}
+		}
+		if !block.balanceIsValid(chain, tx.Sender, size){
+			return false
+		}
+		if !block.balanceIsValid(chain, tx.Receiver, size){
+			return false
+		}
+	}
+	return true
+}
+
+func (block *Block) hash() []byte {
+	var tempHash []byte
+	for _, tx := range block.Transactions {
+		tempHash = HashSum(bytes.Join(
+			[][]byte{
+				tempHash,
+				tx.CurrHash,
+			},
+			[]byte{},
+		))
+	}
+	var list []string
+	for hash := range block.Mapping {
+		list = append(list, hash)
+	}
+	sort.Strings(list)
+	for _, hash := range list {
+		tempHash = HashSum(bytes.Join(
+			[][]byte{
+				tempHash,
+				[]byte(hash),
+				ToBytes(block.Mapping[hash]),
+			},
+			[]byte{},
+		))
+	}
+	return HashSum(bytes.Join(
+		[][]byte{
+			tempHash,
+			ToBytes(uint64(block.Difficulty)),
+			block.PrevHash,
+			[]byte(block.Miner),
+			[]byte(block.TimeStamp),
+		},
+		[]byte{},
+	))
+}
+
+func (block *Block) sign(priv *rsa.PrivateKey) []byte {
+	return Sign(priv, block.CurrHash)
+}
+
+func (block *Block) proof(ch chan bool) uint64 {
+	return ProofOfWork(block.CurrHash, block.Difficulty, ch)
+}
+
+func (tx *Transaction) hashIsValid() bool {
+	return bytes.Equal(tx.hash(), tx.CurrHash)
+}
+
+func (tx *Transaction) signIsValid() bool {
+	return Verify(ParsePublic(tx.Sender), tx.CurrHash, tx.Signature) == nil
+}
+
+func (block *Block) balanceIsValid(chain *BlockChain, address string, size uint64) bool {
+	if _, ok := block.Mapping[address]; !ok{
+		return false
+		// Q: Что означают 2 строки выше? Именно запись !ok {return false}
+	}
+	lentxs := len(block.Transactions)
+	balanceInChain := chain.Balance(address, size)
+	balanceSubBlock := uint64(0)
+	balanceAddBlock := uint64(0)
+	for i := 0; i < lentxs; i++ {
+		tx := block.Transactions[i]
+		if tx.Sender == address {
+			balanceSubBlock += tx.Value + tx.ToStorage
+		}
+		if tx.Receiver == address {
+			balanceAddBlock += tx.Value
+		}
+		if STORAGE_CHAIN == address {
+			balanceAddBlock += tx.ToStorage
+		}
+	}
+	if (balanceInChain + balanceAddBlock - balanceSubBlock) != block.Mapping[address] {
+		return false
+	}
+	return true
+}
+
+func ProofOfWork(blockHash []byte, difficulty uint8, ch chan bool) uint64 {
+	var (
+		Target = big.NewInt(1)
+		// Q: Что за big в Go?
+		intHash = big.NewInt(1)
+		nonce = uint64(mrand.Intn(math.MaxUint32))
+		hash []byte
+	)
+
+	Target.Lsh(Target, 256 - uint(difficulty))
+	for nonce < math.MaxUint64 {
+		select {
+			// Q: Что за select?
+		case <- ch:
+			if DEBUG {
+				fmt.Println()
+			}
+			return nonce
+		default:
+			hash = HashSum(bytes.Join(
+				[][]byte{
+					blockHash,
+					ToBytes(nonce),
+				},
+				[]byte{},
+			))
+			if DEBUG {
+				fmt.Printf("\rMining: %s", Base64Encode(hash))
+				// Q: Printf
+			}
+			intHash.SetBytes(hash)
+			if intHash.Cmp(Target) == -1 {
+				if DEBUG {
+					fmt.Println()
+				}
+				return nonce
+			}
+			nonce++
+		}
+	}
+	return nonce
+}
+
+func Verify(pub *rsa.PublicKey, data, sign []byte) error {
+	// Q: почему data в строке выше без типа?
+	return rsa.VerifyPSS(pub, crypto.SHA256, data, sign, nil)
+}
+
+func ParsePublic(pubData string) *rsa.PublicKey {
+	pub, err := x509.ParsePKCS1PublicKey(Base64Decode(pubData))
+	if err != nil {
+		return nil
+	}
+	return pub
+}
+
+func init() {
+	mrand.Seed(time.Now().UnixNano())
+}
+
+func Base64Decode(data string) []byte {
+	result, err := base64.StdEncoding.DecodeString(data)
+	if err != nil {
+		return nil
+	}
+	return result
+}
+
+func GeneratePrivate(bits uint) *rsa.PrivateKey {
+	// Q: uint это сколько бит?
+	priv, err := rsa.GenerateKey(rand.Reader, int(bits))
+	if err != nil {
+		return nil
+	}
+	return priv
+}
+
+func StringPrivate(priv *rsa.PrivateKey) string {
+	return Base64Encode(x509.MarshalPKCS1PrivateKey(priv))
+}
+
+func ParsePrivate(privData string) *rsa.PrivateKey {
+	priv, err := x509.ParsePKCS1PrivateKey(Base64Decode(privData))
+	if err != nil {
+		return nil
+	}
+	return priv
+}
+
+func NewUser() *User {
+	return &User{
+		PrivateKey: GeneratePrivate(KEY_SIZE),
+	}
+	// Q: Это означает: User такой, что имеет такие характеристики. Да или нет?
+}
+
+func LoadUser(purse string) *User {
+	priv := ParsePrivate(purse)
+	if priv == nil {
+		return nil
+	}
+	return &User{
+		PrivateKey: priv,
+	}
+}
+
+func (user *User) Purse() string {
+	return StringPrivate(user.Private())
+}
+
+func (chain *BlockChain) LastHash() []byte {
+	var hash string
+	row := chain.DB.QueryRow("SELECT Hash FROM BlockChain ORDER BY Id DESC")
+	row.Scan(&hash)
+	// Q: почему &hash, а не просто hash?
+	return Base64Decode(hash)
+}
+
+func (block *Block) isValid(chain *BlockChain, size uint64) bool {
+	switch {
+	case block == nil:
+		return false
+	case block.Difficulty != DIFFICULTY:
+		return false
+	case !block.hashIsValid(chain, size):
+		return false
+	case !block.signIsValid():
+		return false
+	case !block.proofIsValid():
+		return false
+	case !block.mappingIsValid():
+		return false
+	case !block.timeIsValid(chain):
+		return false
+	case !block.transactionIsValid(chain, size):
+		return false
+	}
+	return true
+}
+
+func SerializeTX(tx *Transaction) string {
+	jsonData, err := json.MarshalIndent(*tx, "", "\t")
+	if err != nil {
+		return ""
+	}
+	return string(jsonData)
+}
+
+func DeserializeTX(data string) *Transaction {
+	var tx Transaction
+	err := json.Unmarshal([]byte(data), &tx)
+	if err != nil {
+		return nil
+	}
+	return &tx
+}
+
+func (block *Block) hashIsValid(chain *BlockChain, size uint64) bool {
+	if !bytes.Equal(block.hash(), block.CurrHash) {
+		return false
+	}
+
+	var id uint64
+	row := chain.DB.QueryRow("SELECT Id FROM BlockChain WHERE Hash=$1", Base64Encode(block.PrevHash))
+	row.Scan(&id)
+	return id == size
+}
+
+func (block *Block) signIsValid() bool {
+	return Verify(ParsePublic(block.Miner), block.CurrHash, block.Signature) == nil
+}
+
+func (block *Block) proofIsValid() bool {
+	intHash := big.NewInt(1)
+	Target := big.NewInt(1)
+	hash := HashSum(bytes.Join(
+		[][]byte{
+			block.CurrHash,
+			ToBytes(block.Nonce),
+		},
+		[]byte{},
+	))
+	intHash.SetBytes(hash)
+	Target.Lsh(Target, 256 - uint(block.Difficulty))
+	// Q: Что за Lsh?
+	if intHash.Cmp(Target) == -1 {
+		return true
+	}
+	return false
+}
+
+func (block *Block) mappingIsValid() bool {
+	for hash := range block.Mapping {
+		if hash == STORAGE_CHAIN {
+			continue
+		}
+		flag := false
+		for _, tx := range block.Transactions{
+			if tx.Sender == hash || tx.Receiver == hash {
+				flag = true
+				break
+			}
+		}
+		if !flag {
+			return false
+		}
+	}
+	return true
+}
+
+func (block *Block) timeIsValid(chain *BlockChain) bool {
+	btime, err := time.Parse(time.RFC3339, block.TimeStamp)
+	if err != nil {
+		return false
+	}
+	diff := time.Now().Sub(btime)
+	if diff < 0 {
+		return false
+	}
+	var sblock string
+	row := chain.DB.QueryRow("SELECT Block FROM BlockChain WHERE Hash=$1",
+			Base64Encode(block.PrevHash))
+	row.Scan(&sblock)
+	// Q: Вот зачему тут &?
+	lblock := DeserializeBlock(sblock)
+	if lblock == nil {
+		return false
+	}
+	ltime, err := time.Parse(time.RFC3339, lblock.TimeStamp)
+	if err != nil {
+		return false
+	}
+	result := btime.Sub(ltime)
+	return result > 0
+}
