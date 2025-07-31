@@ -630,7 +630,7 @@ func (chain *BlockChain) LastHash() []byte {
 	return Base64Decode(hash)
 }
 
-func (block *Block) isValid(chain *BlockChain, size uint64) bool {
+func (block *Block) IsValid(chain *BlockChain, size uint64) bool {
 	switch {
 	case block == nil:
 		return false

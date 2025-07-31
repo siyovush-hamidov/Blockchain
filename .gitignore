@@ -31,7 +31,11 @@ go.work.sum
 # .idea/
 # .vscode/
 
-main
-mainClient
-mainNetwork
-mainNode
+client
+bc
+node
+network
+chain1.db
+chain2.db
+node1.key
+node2.key

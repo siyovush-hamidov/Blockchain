@@ -78,6 +78,9 @@ func init() {
 	if User == nil {
 		panic("failed: load user")
 	}
+
+    fmt.Println("User address:", User.Address())
+    fmt.Println("Loaded addresses:", Addresses)
 }
 
 func readFile(filename string) string {
@@ -204,41 +207,44 @@ func chainPrint() {
 	}
 	fmt.Println()
 }
-
 func chainTX(splited []string) {
-	if len(splited) != 3 {
-		fmt.Println("failed: len(splited) != 3\n")
-		return
-	}
-	num, err := strconv.Atoi(splited[2])
-	// Q: strconv.Atoi
-	if err != nil {
-		fmt.Println("failed: strconv.Atoi(num)\n")
-		return
-	}
-	for _, addr := range Addresses {
-		res := nt.Send(addr, &nt.Package{
-			Option: GET_LHASH,
-		})
-		if res == nil {
-			continue
-		}
-		tx := bc.NewTransaction(User, bc.Base64Decode(res.Data), splited[1], uint64(num))
-		res = nt.Send(addr, &nt.Package{
-			Option: ADD_TRNSX,
-			Data: bc.SerializeTX(tx),
-		})
-		if res == nil {
-			continue
-		}
-		if res.Data == "ok" {
-			fmt.Printf("ok: (%s)\n", addr)
-		} else {
-			fmt.Printf("fail: (%s)\n", addr)
-		}
-	}
-	fmt.Println()
-}
+    if len(splited) != 3 {
+        fmt.Println("failed: len(splited) != 3\n")
+        return
+    }
+    num, err := strconv.Atoi(splited[2])
+    if err != nil {
+        fmt.Println("failed: strconv.Atoi(num)\n")
+        return
+    }
+    for _, addr := range Addresses {
+        fmt.Println("Sending GET_LHASH to", addr)
+        res := nt.Send(addr, &nt.Package{
+            Option: GET_LHASH,
+        })
+        if res == nil {
+            fmt.Println("No response from", addr)
+            continue
+        }
+        tx := bc.NewTransaction(User, bc.Base64Decode(res.Data), splited[1], uint64(num))
+        fmt.Println("Sending ADD_TRNSX to", addr)
+        res = nt.Send(addr, &nt.Package{
+            Option: ADD_TRNSX,
+            Data: bc.SerializeTX(tx),
+        })
+        if res == nil {
+            fmt.Println("No response from", addr)
+            continue
+        }
+        if res.Data == "ok" {
+            fmt.Printf("ok: (%s)\n", addr)
+        } else {
+            fmt.Printf("fail: (%s)\n", addr)
+        }
+    }
+    fmt.Println()
+} 
+// Q: strconv.Atoi
 
 func chainBalance(splited []string) {
 	if len(splited) != 2 {
@@ -280,19 +286,20 @@ func chainSize() {
 	}
 	fmt.Printf("Size: %s blocks\n\n", res.Data)
 }
-
 func printBalance(useraddr string) {
-	for _, addr := range Addresses {
-		res := nt.Send(addr, &nt.Package{
-			Option: GET_BLNCE,
-			Data: useraddr,
-		})
-		if res == nil {
-			continue
-		}
-		fmt.Printf("Balance (%s): %s coins\n", addr, res.Data)
-	}
-	fmt.Println()
+    for _, addr := range Addresses {
+        fmt.Println("Sending GET_BLNCE to", addr)
+        res := nt.Send(addr, &nt.Package{
+            Option: GET_BLNCE,
+            Data: useraddr,
+        })
+        if res == nil {
+            fmt.Println("No response from", addr)
+            continue
+        }
+        fmt.Printf("Balance (%s): %s coins\n", addr, res.Data)
+    }
+    fmt.Println()
 }
 
 func main() {
