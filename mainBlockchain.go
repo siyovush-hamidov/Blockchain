@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	bc "github.com/siyovush-hamidov/Blockchain/blockchain"
-	// Q: Вот нахрена тут писать путь к папке в репе?
+	// Q: зачем тут писать путь к папке в репе?
 )
 
 const (
