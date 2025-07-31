@@ -2,19 +2,13 @@
 
 A simple Proof-of-Work (PoW) blockchain built from scratch in Go.
 
----
-
 ## Overview
 
 This project implements a basic PoW blockchain where nodes mine blocks and clients interact with the network. It’s a practical way to dive into blockchain fundamentals using Go.
 
----
-
 ## Source
 
 This project is inspired by and based on the concepts from [number571's blockchain tutorial](https://github.com/number571/blockchain/blob/master/_example/blockchain.pdf).
-
----
 
 ## Getting Started
 ### Build the Project
@@ -28,8 +22,6 @@ cd PoW-Blockchain
 make build
 ```
 This compiles `node` and `client` executables into the project directory.
-
----
 
 ## Usage
 
