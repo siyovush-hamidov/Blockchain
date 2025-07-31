@@ -51,10 +51,10 @@ This command runs another node on port `9090` with its own key and database.
 This connects to the nodes using `node1.key` and interacts with the blockchain.
 ### Client Commands
 After running the client, use these commands:
-`/user balance` — Check your balance across nodes.
-`/chain tx <receiver> <value>` — Send a transaction (e.g., /chain tx aaa 3).
-`/chain print` — Display the blockchain.
-`/chain balance` — Check addresses' balance.
-`/chain size` — Get the number of blocks.
-`/chain block <number>` — View a specific block.
-`/exit` — Exit the client.
+- `/user balance` — Check your balance across nodes.
+- `/chain tx <receiver> <value>` — Send a transaction (e.g., /chain tx aaa 3).
+- `/chain print` — Display the blockchain.
+- `/chain balance` — Check addresses' balance.
+- `/chain size` — Get the number of blocks.
+- `/chain block <number>` — View a specific block.
+- `/exit` — Exit the client.
