@@ -1,4 +1,4 @@
-# 🔒 POW ₿lockchain Implementation
+# 🔒 PoW-Blockchain
 
 A simple Proof-of-Work (PoW) blockchain built from scratch in Go.
 
@@ -20,8 +20,8 @@ This project is inspired by and based on the concepts from [number571's blockcha
 ### Build the Project
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/blockchain.git
-cd blockchain
+git clone https://github.com/siyovush-hamidov/PoW-Blockchain
+cd PoW-Blockchain
 ```
 2. Build using the Makefile:
 ```bash
