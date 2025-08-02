@@ -60,17 +60,6 @@ const (
 
 const (
 	KEY_SIZE = 2048
-	// bits int: This integer represents the desired bit size of the RSA key. Common values include 2048 or 4096 for strong security. The function returns an error if a key of less than 1024 bits is requested, as such keys are considered insecure.
-	// Изза этого была ошибка:
-	// 	// siyovush@siyovush-laptop:~/Desktop/Work/Studying/golang/Blockchain$ ./main 
-	// panic: Failed to generate private key
-
-	// goroutine 1 [running]:
-	// github.com/siyovush-hamidov/Blockchain/blockchain.NewUser()
-	//         /home/siyovush/Desktop/Work/Studying/golang/Blockchain/blockchain/blockchain.go:579 +0x89
-	// main.main()
-	//         /home/siyovush/Desktop/Work/Studying/golang/Blockchain/main.go:15 +0x25
-	// Q: Почему нельзя использовать 512 в качестве количества бит в rsa.GenerateKey() ?
 )
 
 type BlockChain struct {
@@ -246,7 +235,6 @@ func HashSum(data []byte) []byte {
 func ToBytes(num uint64) []byte {
 	var data = new(bytes.Buffer)
 	err := binary.Write(data, binary.BigEndian, num)
-	// Q: Как работает BigEndian и LittleEndian?
 	if err != nil {
 		return nil
 	}
@@ -255,7 +243,7 @@ func ToBytes(num uint64) []byte {
 
 func Sign(priv *rsa.PrivateKey, data []byte) []byte {
 	signature, err := rsa.SignPSS(rand.Reader, priv, crypto.SHA256, data, nil)
-	// Q: Что такое digest?
+	: Что такое digest?
 	if err != nil {
 		return nil
 	}
@@ -263,10 +251,8 @@ func Sign(priv *rsa.PrivateKey, data []byte) []byte {
 }
 
 func (block *Block) AddTransaction(chain *BlockChain, tx *Transaction) error {
-	// Q: ключевое слово error
 	if tx == nil {
 		return errors.New("The transaction is null")
-		// Q: errors.New("Some text")
 	}
 	if tx.Value == 0 {
 		return errors.New("The transaction value is 0")
@@ -284,7 +270,6 @@ func (block *Block) AddTransaction(chain *BlockChain, tx *Transaction) error {
 	var balanceInChain uint64
 	balanceInTX := tx.Value + tx.ToStorage
 	if value, ok := block.Mapping[tx.Sender]; ok{
-		// Q: Что это за запись такая? Что означает ok {} ?
 		balanceInChain = value
 	} else {
 		balanceInChain = chain.Balance(tx.Sender, chain.Size())
@@ -312,7 +297,6 @@ func (chain *BlockChain) Balance(address string, size uint64) uint64 {
 	}
 	defer rows.Close()
 	for rows.Next() {
-		// Q: Что за конструкция?
 		rows.Scan(&sblock)
 		block = DeserializeBlock(sblock)
 		if value, ok := block.Mapping[address]; ok {
@@ -351,7 +335,6 @@ func DeserializeBlock(data string) *Block {
 }
 
 func (block *Block) Accept(chain *BlockChain, user *User, ch chan bool) error {
-	// Q: chan bool?
 	if !block.transactionIsValid(chain, chain.Size()) {
 		return errors.New("The transaction is not valid")
 	}
@@ -484,7 +467,6 @@ func (tx *Transaction) signIsValid() bool {
 func (block *Block) balanceIsValid(chain *BlockChain, address string, size uint64) bool {
 	if _, ok := block.Mapping[address]; !ok{
 		return false
-		// Q: Что означают 2 строки выше? Именно запись !ok {return false}
 	}
 	lentxs := len(block.Transactions)
 	balanceInChain := chain.Balance(address, size)
@@ -511,7 +493,6 @@ func (block *Block) balanceIsValid(chain *BlockChain, address string, size uint6
 func ProofOfWork(blockHash []byte, difficulty uint8, ch chan bool) uint64 {
 	var (
 		Target = big.NewInt(1)
-		// Q: Что за big в Go?
 		intHash = big.NewInt(1)
 		nonce = uint64(mrand.Intn(math.MaxUint32))
 		hash []byte
@@ -520,7 +501,6 @@ func ProofOfWork(blockHash []byte, difficulty uint8, ch chan bool) uint64 {
 	Target.Lsh(Target, 256 - uint(difficulty))
 	for nonce < math.MaxUint64 {
 		select {
-			// Q: Что за select?
 		case <- ch:
 			if DEBUG {
 				fmt.Println()
@@ -536,7 +516,6 @@ func ProofOfWork(blockHash []byte, difficulty uint8, ch chan bool) uint64 {
 			))
 			if DEBUG {
 				fmt.Printf("\rMining: %s", Base64Encode(hash))
-				// Q: Printf
 			}
 			intHash.SetBytes(hash)
 			if intHash.Cmp(Target) == -1 {
@@ -552,7 +531,6 @@ func ProofOfWork(blockHash []byte, difficulty uint8, ch chan bool) uint64 {
 }
 
 func Verify(pub *rsa.PublicKey, data, sign []byte) error {
-	// Q: почему data /* в */ строке выше без типа?
 	return rsa.VerifyPSS(pub, crypto.SHA256, data, sign, nil)
 }
 
@@ -577,7 +555,6 @@ func Base64Decode(data string) []byte {
 }
 
 func GeneratePrivate(bits uint) *rsa.PrivateKey {
-	// Q: uint это сколько бит?
 	priv, err := rsa.GenerateKey(rand.Reader, int(bits))
 	if err != nil {
 		return nil
@@ -605,7 +582,6 @@ func NewUser() *User {
 	return &User{
 		PrivateKey: priv,
 	}
-	// Q: Это означает: User такой, что имеет такие характеристики. Да или нет?
 }
 
 func LoadUser(purse string) *User {
@@ -626,7 +602,6 @@ func (chain *BlockChain) LastHash() []byte {
 	var hash string
 	row := chain.DB.QueryRow("SELECT Hash FROM BlockChain ORDER BY Id DESC")
 	row.Scan(&hash)
-	// Q: почему &hash, а не просто hash?
 	return Base64Decode(hash)
 }
 
@@ -696,7 +671,6 @@ func (block *Block) proofIsValid() bool {
 	))
 	intHash.SetBytes(hash)
 	Target.Lsh(Target, 256 - uint(block.Difficulty))
-	// Q: Что за Lsh?
 	if intHash.Cmp(Target) == -1 {
 		return true
 	}
@@ -735,7 +709,6 @@ func (block *Block) timeIsValid(chain *BlockChain) bool {
 	row := chain.DB.QueryRow("SELECT Block FROM BlockChain WHERE Hash=$1",
 			Base64Encode(block.PrevHash))
 	row.Scan(&sblock)
-	// Q: Вот зачему тут &?
 	lblock := DeserializeBlock(sblock)
 	if lblock == nil {
 		return false
