@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	bc "github.com/siyovush-hamidov/Blockchain/blockchain"
-	// Q: зачем тут писать путь к папке в репе?
 )
 
 const (
@@ -28,7 +27,6 @@ func main() {
 	}
 	var sblock string
 	rows, err := chain.DB.Query("SELECT Block FROM BlockChain")
-	// Q: Query vs QueryRow
 	if err != nil {
 		panic("ERROR: Query to database unsuccessful")
 	}

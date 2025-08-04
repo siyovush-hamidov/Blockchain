@@ -14,7 +14,6 @@ import (
 
 const (
 	ADD_BLOCK = iota + 1
-	// Q: iota
 	ADD_TRNSX
 	GET_BLOCK
 	GET_LHASH
@@ -29,7 +28,6 @@ var (
 
 func init() {
 	if len(os.Args) < 2 {
-		// Q: что за os.Args?
 		panic("failed: len(os.Args < 2)")
 	}
 	var (
@@ -37,7 +35,6 @@ func init() {
 		userNewStr = ""
 		userLoadStr = ""
 	)
-	// Q: Зачем создавать 2 var, если можно всё поставить в один?
 	var (
 		addrExist = false
 		userNewExist = false
@@ -47,7 +44,6 @@ func init() {
 		arg := os.Args[i]
 		switch {
 		case strings.HasPrefix(arg, "-loadaddr:"):
-			// Q: Что тут сейчас произошло?
 			addrStr = strings.Replace(arg, "-loadaddr:", "", 1)
 			addrExist = true
 		case strings.HasPrefix(arg, "-newuser:"):
@@ -85,7 +81,6 @@ func init() {
 
 func readFile(filename string) string {
 	data, err := os.ReadFile(filename)
-	// Q: Что за ioutil? inout output util?
 	if err != nil {
 		return ""
 	}
@@ -125,15 +120,12 @@ func handleClient() {
 		message string
 		splited []string
 	)
-	// Q: Где сохраняются переменные внутри функции, глобальные и переменные, для который динамически выделена память?
 	for {
 		message = inputString("> ")
-		// Q: Что за синтаксис? inputString(begin string) и туда мы пишем "> ". Что это значит?
 		splited = strings.Split(message, " ")
 		switch splited[0] {
 		case "/exit":
 			os.Exit(0)
-			// Q: Что значит 0 в exit(0) в языках программироавания? 
 		case "/user":
 			if len(splited) < 2 {
 				fmt.Println("failed: len(user) < 2\n")
@@ -176,7 +168,6 @@ func handleClient() {
 
 func inputString(begin string) string {
 	fmt.Print(begin)
-	// Q: fmt.Print vs fmt.Println
 	msg, _ := bufio.NewReader(os.Stdin).ReadString('\n')
 	return strings.Replace(msg, "\n", "", 1)
 }
@@ -195,7 +186,6 @@ func userBalance() {
 
 func chainPrint() {
 	for i := 0; ; i++ {
-		// Q: Что за синтаксис?
 		res := nt.Send(Addresses[0], &nt.Package{
 			Option: GET_BLOCK,
 			Data: fmt.Sprintf("%d", i),
@@ -243,8 +233,7 @@ func chainTX(splited []string) {
         }
     }
     fmt.Println()
-} 
-// Q: strconv.Atoi
+}
 
 func chainBalance(splited []string) {
 	if len(splited) != 2 {
@@ -267,7 +256,6 @@ func chainBlock(splited []string) {
 	res := nt.Send(Addresses[0], &nt.Package{
 		Option: GET_BLOCK,
 		Data: fmt.Sprintf("%d", num - 1),
-		// Q: fmt.Sprintf()
 	})
 	if res == nil || res.Data == "" {
 		fmt.Println("failed: getBlock\n")

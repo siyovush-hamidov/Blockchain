@@ -138,7 +138,6 @@ func init() {
 
 func readFile(filename string) string {
 	data, err := os.ReadFile(filename)
-	// Q: Что за ioutil? inout output util?
 	if err != nil {
 		return ""
 	}
@@ -192,7 +191,6 @@ func chainLoad(filename string) *bc.BlockChain {
 func main() {
 	nt.Listen(Serve, handleServer)
 	for {
-		// Q: Что за синтаксис
 		fmt.Scanln()
 	}
 }
